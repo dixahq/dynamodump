@@ -5,12 +5,15 @@ import logging
 import os
 import shutil
 import threading
+import boto
+import tarfile
 import boto.dynamodb2.layer1
 import datetime
 import errno
 import sys
 import time
 import re
+from boto.s3.key import Key
 from boto.dynamodb2.layer1 import DynamoDBConnection
 
 JSON_INDENT = 2
@@ -296,6 +299,30 @@ def do_backup(conn, table_name, read_capacity):
         logging.info("Backup for " + table_name + " table completed. Time taken: " + str(
             datetime.datetime.now().replace(microsecond=0) - start_time))
 
+def do_upload(bucket_name):
+    todayStr = datetime.datetime.now().strftime('%Y-%m-%d')
+    tmpArchive = todayStr + ".tar.gz"
+
+    logging.info("Creating archive " + tmpArchive)
+    archive = tarfile.open(name=tmpArchive, mode='w:gz')
+    archive.add("dump")
+    archive.close()
+
+    filesize = "%.2f" % (os.path.getsize(tmpArchive) / (1024 * 1024)) + "MB"
+
+    conn = boto.connect_s3()
+
+    try:
+        bucket = conn.get_bucket(bucket_name)
+    except boto.exception.S3ResponseError:
+        logging.info("Bucket " + bucket_name + " not found, creating")
+        bucket = conn.create_bucket(bucket_name)
+
+    key = Key(bucket)
+    key.key = tmpArchive
+    logging.info("Uploading " + tmpArchive + " (" + filesize + ") to S3 bucket " + bucket_name)
+    key.set_contents_from_filename(tmpArchive)
+    os.remove(tmpArchive)
 
 def do_restore(conn, sleep_interval, source_table, destination_table, write_capacity):
     logging.info("Starting restore for " + source_table + " to " + destination_table + "..")
@@ -460,6 +487,7 @@ parser.add_argument("--skipThroughputUpdate", action="store_true", default=False
                     help="Skip updating throughput values across tables [optional]")
 parser.add_argument("--dumpPath", help="Directory to place and search for DynamoDB table backups (defaults to use '" + str(DATA_DUMP) + "') [optional]", default=str(DATA_DUMP))
 parser.add_argument("--log", help="Logging level - DEBUG|INFO|WARNING|ERROR|CRITICAL [optional]")
+parser.add_argument("--s3", help="Upload to S3 bucket")
 args = parser.parse_args()
 
 # set log level
@@ -518,6 +546,10 @@ if args.mode == "backup":
         logging.info("Backup of table(s) " + args.srcTable + " completed!")
     else:
         do_backup(conn, args.srcTable, args.readCapacity)
+
+    if args.s3:
+        do_upload(args.s3)
+
 elif args.mode == "restore":
     if args.destTable is not None:
         dest_table = args.destTable
