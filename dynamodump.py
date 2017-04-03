@@ -251,7 +251,7 @@ def do_empty(conn, table_name):
         datetime.datetime.now().replace(microsecond=0) - start_time))
 
 
-def do_backup(conn, table_name, read_capacity):
+def do_backup(conn, table_name, read_capacity, sleep_interval):
     logging.info("Starting backup for " + table_name + "..")
 
     # trash data, re-create subdir
@@ -289,9 +289,10 @@ def do_backup(conn, table_name, read_capacity):
             f.close()
 
             i += 1
-
+                
             try:
                 last_evaluated_key = scanned_table["LastEvaluatedKey"]
+                time.sleep(sleep_interval)
             except KeyError:
                 break
 
@@ -548,7 +549,7 @@ if args.mode == "backup":
 
         threads = []
         for table_name in matching_backup_tables:
-            t = threading.Thread(target=do_backup, args=(conn, table_name, args.readCapacity,))
+            t = threading.Thread(target=do_backup, args=(conn, table_name, args.readCapacity, sleep_interval,))
             threads.append(t)
             t.start()
             time.sleep(THREAD_START_DELAY)
@@ -558,7 +559,7 @@ if args.mode == "backup":
 
         logging.info("Backup of table(s) " + args.srcTable + " completed!")
     else:
-        do_backup(conn, args.srcTable, args.readCapacity)
+        do_backup(conn, args.srcTable, args.readCapacity, sleep_interval)
 
     if args.s3:
         do_upload(args.s3)
