@@ -1,7 +1,7 @@
 .PHONY:	build push
 
 IMAGE = dynamodump
-TAG = 0.1
+TAG = 0.2
 ROOT = 038101219289.dkr.ecr.eu-west-1.amazonaws.com
 
 build:
